@@ -1,8 +1,12 @@
 // lib/ui/dashboard_page.dart
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
-import 'daftar_barang_page.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'package:flutter/services.dart'; // Untuk SystemNavigator.pop()
+
+// Pastikan Anda juga sudah punya file-file ini di folder /ui:
+import 'daftar_barang_page.dart';
 import 'daftar_transaksi_page.dart';
 import 'laporan_page.dart';
 
@@ -14,7 +18,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  // Daftar warna untuk kategori
+  // Daftar warna untuk palet chart
   final List<Color> colorPalette = [
     Colors.blue,
     Colors.green,
@@ -26,7 +30,7 @@ class _DashboardPageState extends State<DashboardPage> {
     Colors.amber,
   ];
 
-  // Fungsi untuk memproses data dari Firestore
+  // Fungsi untuk memproses data dari Firestore untuk chart
   Map<String, dynamic> _prosesDataSnapshot(List<QueryDocumentSnapshot> docs) {
     Map<String, double> dataKategori = {};
     Map<String, Color> warnaKategori = {};
@@ -37,11 +41,8 @@ class _DashboardPageState extends State<DashboardPage> {
       if (kategori.isEmpty) {
         kategori = 'Lainnya';
       }
-      
       num stok = data['stok_awal'] ?? 0;
-
       dataKategori[kategori] = (dataKategori[kategori] ?? 0) + stok.toDouble();
-
       if (!warnaKategori.containsKey(kategori)) {
         warnaKategori[kategori] =
             colorPalette[warnaKategori.length % colorPalette.length];
@@ -52,64 +53,84 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    const Color primaryColor = Color(0xFF4A4E9E); // Warna ungu utama
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Text(
-                  'INVENTORY BARANG',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // KARTU PIE CHART DIBUNGKUS STREAMBUILDER
-              _buildChartStream(),
-
-              const SizedBox(height: 30),
-              Text(
-                'Menu Utama',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildMenuGrid(),
-              const SizedBox(height: 30),
-              _buildLogoutButton(),
-            ],
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text(
+          'INVENTORY BARANG',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
           ),
+        ),
+        backgroundColor: primaryColor,
+        centerTitle: true,
+        elevation: 0,
+        automaticallyImplyLeading: false, // Hilangkan tombol back di AppBar
+      ),
+      body: SafeArea(
+        // 1. Body utama menggunakan Column agar bisa dibagi jadi 2 bagian
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 2. BAGIAN KONTEN (SCROLLABLE)
+            Expanded(
+              // Expanded mengisi semua ruang yang tersisa
+              child: SingleChildScrollView(
+                // Konten ini sekarang bisa di-scroll jika layarnya pendek
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildChartStream(),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Menu Utama',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildMenuGrid(),
+                    const SizedBox(height: 20), // Spasi di akhir area scroll
+                  ],
+                ),
+              ),
+            ),
+
+            // 3. BAGIAN TOMBOL (STATIS/TIDAK SCROLL)
+            // Tombol ini ada di luar Expanded, jadi akan menempel di bawah
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: _buildLogoutButton(),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // Widget baru untuk StreamBuilder Pie Chart
+  // Widget untuk StreamBuilder Pie Chart
   Widget _buildChartStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('barang').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingChartCard();
+          return _buildLoadingChartCard(); // Tampilan loading
         }
         if (snapshot.hasError) {
           return const Center(child: Text('Error memuat data chart'));
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _buildChartCard({}, {});
+          return _buildChartCard({}, {}); // Tampilan data kosong
         }
 
+        // Proses data jika berhasil didapat
         var processedData = _prosesDataSnapshot(snapshot.data!.docs);
         Map<String, double> dataKategori = processedData['data'];
         Map<String, Color> warnaKategori = processedData['warna'];
@@ -118,12 +139,16 @@ class _DashboardPageState extends State<DashboardPage> {
       },
     );
   }
-  
-  // Widget untuk tampilan loading chart
+
+  // Tampilan kartu loading
   Widget _buildLoadingChartCard() {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 1,
+      shadowColor: Colors.black.withOpacity(0.1),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey[200]!, width: 1),
+      ),
       color: Colors.white,
       child: Container(
         height: 250,
@@ -141,7 +166,9 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             const Expanded(
               child: Center(
-                child: CircularProgressIndicator(),
+                child: CircularProgressIndicator(
+                  color: Color(0xFF4A4E9E),
+                ),
               ),
             ),
             const Text('Memuat data...', style: TextStyle(color: Colors.grey)),
@@ -151,12 +178,16 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // Widget kartu Pie Chart
+  // Tampilan kartu Pie Chart setelah data dimuat
   Widget _buildChartCard(
       Map<String, double> dataKategori, Map<String, Color> warnaKategori) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 1,
+      shadowColor: Colors.black.withOpacity(0.1),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey[200]!, width: 1),
+      ),
       color: Colors.white,
       child: Stack(
         children: [
@@ -175,13 +206,14 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
-                  height: 150,
+                  height: 150, // Tinggi Pie Chart
                   child: PieChart(
                     PieChartData(
-                      sections: _generateChartSections(dataKategori, warnaKategori),
+                      sections:
+                          _generateChartSections(dataKategori, warnaKategori),
                       borderData: FlBorderData(show: false),
                       sectionsSpace: 2,
-                      centerSpaceRadius: 40,
+                      centerSpaceRadius: 40, // Ukuran lubang tengah
                     ),
                   ),
                 ),
@@ -208,7 +240,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // Fungsi untuk membuat section PieChart secara dinamis
+  // Fungsi untuk generate bagian-bagian Pie Chart
   List<PieChartSectionData> _generateChartSections(
       Map<String, double> dataKategori, Map<String, Color> warnaKategori) {
     if (dataKategori.isEmpty) {
@@ -231,11 +263,12 @@ class _DashboardPageState extends State<DashboardPage> {
     }).toList();
   }
 
-  // Fungsi untuk membuat Legend secara dinamis
+  // Fungsi untuk generate legenda di bawah Pie Chart
   Widget _buildDynamicLegend(
       Map<String, double> dataKategori, Map<String, Color> warnaKategori) {
     if (dataKategori.isEmpty) {
-      return const Text('Belum ada data barang.', style: TextStyle(color: Colors.grey));
+      return const Text('Belum ada data barang.',
+          style: TextStyle(color: Colors.grey));
     }
     return Wrap(
       spacing: 16.0,
@@ -249,6 +282,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // Tampilan satu item legenda
   Widget _buildLegendItem(Color color, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -260,64 +294,59 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- FUNGSI MENU GRID YANG DIPERBARUI SESUAI GAMBAR ---
-  Widget _buildMenuGrid() {
+  // Tampilan grid menu
+   Widget _buildMenuGrid() {
     return Column(
       children: [
-        // 1. Kartu Transaksi (lebar penuh)
         _buildMenuCard(
-          icon: Icons.sync_alt_rounded,
-          iconColor: const Color(0xFFE91E63), // Pink
-          iconBackgroundColor: const Color(0xFFFCE4EC), // Pink light
+          icon: Icons.swap_horiz,
+          iconColor: const Color(0xFFE91E63),
+          iconBackgroundColor: const Color(0xFFF5F5F5),
           title: 'Transaksi',
           subtitle: 'Barang Masuk & Keluar',
           onTap: () {
-            print('KARTU TRANSAKSI DIKLIK!');
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const DaftarTransaksiPage()),
+              MaterialPageRoute(
+                builder: (context) => const DaftarTransaksiPage(),
+              ),
             );
           },
         ),
-
-        const SizedBox(height: 16),
-
-        // 2. Baris untuk Laporan dan Data Barang
+        const SizedBox(height: 18),
         Row(
           children: [
-            // Kartu Laporan (Setengah lebar)
             Expanded(
               child: _buildMenuCard(
-                icon: Icons.description_outlined,
-                iconColor: const Color(0xFF4CAF50), // Green
-                iconBackgroundColor: const Color(0xFFE8F5E9), // Green light
+                icon: Icons.description,
+                iconColor: const Color(0xFF4CAF50),
+                iconBackgroundColor: const Color(0xFFF5F5F5),
                 title: 'Laporan',
                 subtitle: 'Lihat Laporan Stok Barang',
                 onTap: () {
-                  print('CARD LAPORAN DIKLIK!');
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const LaporanPage()),
+                    MaterialPageRoute(
+                      builder: (context) => const LaporanPage(),
+                    ),
                   );
                 },
               ),
             ),
-            
             const SizedBox(width: 16),
-
-            // Kartu Data Barang (Setengah lebar)
             Expanded(
               child: _buildMenuCard(
-                icon: Icons.inventory_2_outlined,
-                iconColor: const Color(0xFF2196F3), // Blue
-                iconBackgroundColor: const Color(0xFFE3F2FD), // Blue light
+                icon: Icons.inventory_2,
+                iconColor: const Color(0xFF2196F3),
+                iconBackgroundColor: const Color(0xFFF5F5F5),
                 title: 'Data Barang',
                 subtitle: 'Tambah, Edit, Hapus Barang',
                 onTap: () {
-                  print('KARTU DATA BARANG DIKLIK!');
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const DaftarBarangPage()),
+                    MaterialPageRoute(
+                      builder: (context) => const DaftarBarangPage(),
+                    ),
                   );
                 },
               ),
@@ -327,8 +356,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ],
     );
   }
-  
-  // Widget untuk membuat kartu menu yang diperbarui
+
   Widget _buildMenuCard({
     required IconData icon,
     required Color iconColor,
@@ -337,70 +365,91 @@ class _DashboardPageState extends State<DashboardPage> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return Card(
-      elevation: 1,
-      shadowColor: Colors.black.withOpacity(0.1),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey[200]!, width: 1),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+            spreadRadius: 1,
+          ),
+        ],
       ),
-      color: Colors.white,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Icon dengan background circular
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: iconBackgroundColor,
-                  shape: BoxShape.circle,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(28),
+          child: Container(
+            width: double.infinity,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: iconBackgroundColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    icon,
+                    color: iconColor,
+                    size: 30,
+                  ),
                 ),
-                child: Icon(
-                  icon, 
-                  color: iconColor, 
-                  size: 28,
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.black87,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              // Title
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: Colors.black87,
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              // Subtitle
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                  height: 1.3,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  // Tombol Keluar
   Widget _buildLogoutButton() {
     return ElevatedButton(
-      onPressed: () {},
+      onPressed: () {
+        // Fungsi untuk keluar dari aplikasi
+        SystemNavigator.pop();
+      },
       style: ElevatedButton.styleFrom(
         backgroundColor: const Color(0xFF4A4E9E),
         padding: const EdgeInsets.symmetric(vertical: 14),

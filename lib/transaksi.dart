@@ -13,7 +13,7 @@ class Transaksi {
   final String? catatan;
   final String? petugas;  // Untuk keluar
   final String? tujuan;   // Untuk keluar
-  final String? penerima; // Untuk masuk
+  final String? penerima; // Untuk masuk 
   final String? pengirim; // Untuk masuk
 
   Transaksi({
