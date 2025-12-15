@@ -2,7 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
-import '../item.dart'; // Impor model Item
+import 'package:dropdown_search/dropdown_search.dart';
+import '../item.dart';
 
 class FormBarangMasukPage extends StatefulWidget {
   const FormBarangMasukPage({Key? key}) : super(key: key);
@@ -14,12 +15,16 @@ class FormBarangMasukPage extends StatefulWidget {
 class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
   final _formKey = GlobalKey<FormState>();
   final _jumlahController = TextEditingController();
-  final _penerimaController = TextEditingController();
   final _pengirimController = TextEditingController();
   final _catatanController = TextEditingController();
 
-  Item? _selectedItem; // Untuk menyimpan data barang yang dipilih
+  Item? _selectedItem;
   bool _isLoading = false;
+  String _labelJumlah = 'Jumlah *';
+
+  // Daftar Nama Petugas
+  final List<String> _daftarPetugas = ['Rita', 'Teddy'];
+  String? _selectedPenerima;
 
   Future<void> _simpanBarangMasuk() async {
     if (_formKey.currentState!.validate()) {
@@ -30,15 +35,15 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
         return;
       }
 
-      setState(() { _isLoading = true; });
+      setState(() {
+        _isLoading = true;
+      });
 
       try {
         int jumlah = int.parse(_jumlahController.text);
 
-        // Gunakan WriteBatch untuk operasi atomik
         WriteBatch batch = FirebaseFirestore.instance.batch();
 
-        // 1. Buat dokumen transaksi baru
         DocumentReference trxRef = FirebaseFirestore.instance.collection('transaksi').doc();
         batch.set(trxRef, {
           'itemId': _selectedItem!.id,
@@ -46,30 +51,27 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
           'tipe': 'masuk',
           'jumlah': jumlah,
           'satuan': _selectedItem!.satuan,
-          'penerima': _penerimaController.text,
+          'penerima': _selectedPenerima,
           'pengirim': _pengirimController.text,
           'catatan': _catatanController.text,
           'timestamp': FieldValue.serverTimestamp(),
         });
 
-        // 2. Update stok barang di koleksi 'barang'
-        DocumentReference itemRef = FirebaseFirestore.instance
-            .collection('barang')
-            .doc(_selectedItem!.id);
-        
-        // Gunakan FieldValue.increment() untuk menambah stok
-        batch.update(itemRef, {'stok_awal': FieldValue.increment(jumlah)});
+        DocumentReference itemRef = FirebaseFirestore.instance.collection('barang').doc(_selectedItem!.id);
+        batch.update(itemRef, {'stok': FieldValue.increment(jumlah)});
 
-        // Commit batch
         await batch.commit();
 
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Barang masuk berhasil dicatat!')),
-        );
-
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Barang masuk berhasil dicatat!')),
+          );
+        }
       } catch (e) {
-        setState(() { _isLoading = false; });
+        setState(() {
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Gagal menyimpan: $e')),
         );
@@ -80,7 +82,6 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
   @override
   void dispose() {
     _jumlahController.dispose();
-    _penerimaController.dispose();
     _pengirimController.dispose();
     _catatanController.dispose();
     super.dispose();
@@ -102,23 +103,37 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
             children: [
               _buildInfoBox(),
               const SizedBox(height: 20),
-              
-              // Dropdown Pilih Barang
+
+              // Dropdown Barang (Dengan Filter isArchived)
               _buildBarangDropdown(),
-              
+
               const SizedBox(height: 16),
               _buildTextField(
                 controller: _jumlahController,
-                label: 'Jumlah *',
+                label: _labelJumlah,
                 icon: Icons.numbers,
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 16),
-              _buildTextField(
-                controller: _penerimaController,
-                label: 'Penerima *',
-                icon: Icons.person_outline,
+
+              // Dropdown Petugas (Penerima)
+              DropdownButtonFormField<String>(
+                value: _selectedPenerima,
+                decoration: _buildInputDecoration(label: 'Penerima (Petugas) *', icon: Icons.person_outline),
+                items: _daftarPetugas.map((String nama) {
+                  return DropdownMenuItem<String>(
+                    value: nama,
+                    child: Text(nama),
+                  );
+                }).toList(),
+                onChanged: (newValue) {
+                  setState(() {
+                    _selectedPenerima = newValue;
+                  });
+                },
+                validator: (value) => value == null ? 'Penerima tidak boleh kosong' : null,
               ),
+
               const SizedBox(height: 16),
               _buildTextField(
                 controller: _pengirimController,
@@ -130,10 +145,10 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
                 controller: _catatanController,
                 label: 'Catatan (opsional)',
                 icon: Icons.note_outlined,
+                isRequired: false,
               ),
               const SizedBox(height: 30),
-              
-              // Tombol Simpan
+
               ElevatedButton(
                 onPressed: _isLoading ? null : _simpanBarangMasuk,
                 style: ElevatedButton.styleFrom(
@@ -162,42 +177,56 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
     );
   }
 
-  // Widget untuk Dropdown Barang (dengan StreamBuilder)
+  // Modifikasi: Tambahkan Filter isArchived
   Widget _buildBarangDropdown() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('barang').orderBy('nama').snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        var items = snapshot.data!.docs.map((doc) {
-          return Item.fromFirestore(doc);
-        }).toList();
-
-        return DropdownButtonFormField<Item>(
-          value: _selectedItem,
-          hint: const Text('Pilih Barang *'),
-          decoration: _buildInputDecoration(label: 'Pilih Barang *', icon: Icons.inventory_2_outlined),
-          isExpanded: true,
-          items: items.map((Item item) {
-            return DropdownMenuItem<Item>(
-              value: item,
-              child: Text('${item.nama} (Stok: ${item.stokAwal} ${item.satuan})'),
-            );
-          }).toList(),
-          onChanged: (Item? newValue) {
-            setState(() {
-              _selectedItem = newValue;
-            });
-          },
-          validator: (value) => value == null ? 'Barang tidak boleh kosong' : null,
-        );
+    return DropdownSearch<Item>(
+      asyncItems: (String filter) async {
+        // Query hanya mengambil barang yang TIDAK DIARSIP
+        var snapshot = await FirebaseFirestore.instance
+            .collection('barang')
+            .where('isArchived', isEqualTo: false) // Filter Aktif
+            .orderBy('nama')
+            .get();
+        return snapshot.docs.map((doc) => Item.fromFirestore(doc)).toList();
       },
+      itemAsString: (Item item) => "${item.nama} (Stok: ${item.stok} ${item.satuan})",
+      popupProps: PopupProps.modalBottomSheet(
+        showSearchBox: true,
+        searchFieldProps: const TextFieldProps(
+          decoration: InputDecoration(
+            labelText: "Cari barang...",
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.search),
+          ),
+        ),
+        modalBottomSheetProps: const ModalBottomSheetProps(
+          useSafeArea: true,
+        ),
+        title: Container(
+          padding: const EdgeInsets.all(16),
+          child: const Text(
+            'Pilih Barang',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+      dropdownDecoratorProps: DropDownDecoratorProps(
+        dropdownSearchDecoration: _buildInputDecoration(label: 'Pilih Barang *', icon: Icons.inventory_2_outlined),
+      ),
+      onChanged: (Item? newValue) {
+        setState(() {
+          _selectedItem = newValue;
+          if (newValue != null) {
+            _labelJumlah = 'Jumlah (dalam ${newValue.satuan}) *';
+          }
+        });
+      },
+      selectedItem: _selectedItem,
+      validator: (value) => value == null ? 'Barang tidak boleh kosong' : null,
     );
   }
 
-  // Widget helper untuk info box
   Widget _buildInfoBox() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -219,12 +248,12 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
     );
   }
 
-  // Widget helper untuk text field
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
+    bool isRequired = true,
   }) {
     return TextFormField(
       controller: controller,
@@ -234,7 +263,7 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
           : [],
       decoration: _buildInputDecoration(label: label, icon: icon),
       validator: (value) {
-        if (value == null || value.isEmpty) {
+        if (isRequired && (value == null || value.isEmpty)) {
           return '$label tidak boleh kosong';
         }
         return null;
@@ -242,25 +271,24 @@ class _FormBarangMasukPageState extends State<FormBarangMasukPage> {
     );
   }
 
-  // Helper terpisah untuk Input Decoration
   InputDecoration _buildInputDecoration({required String label, required IconData icon}) {
-     return InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: Colors.grey[600]),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.0),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.0),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.0),
-          borderSide: BorderSide(color: Colors.green, width: 2),
-        ),
-      );
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: Colors.grey[600]),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: BorderSide(color: Colors.grey[300]!),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: BorderSide(color: Colors.grey[300]!),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: BorderSide(color: Colors.green, width: 2),
+      ),
+    );
   }
 }

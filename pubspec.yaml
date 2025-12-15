@@ -31,12 +31,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   fl_chart: ^0.68.0
 
-  # format tanggal dan waktu
-  intl: ^0.19.0
+  # format tanggal dan waktu & mengubah angka menjadi format mata uang Rupiah
+  intl: ^0.20.2
 
   # Database Firebase
   firebase_core: ^2.31.0     
@@ -45,6 +44,23 @@ dependencies:
   # UI
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
+
+  # dropdown_search
+  dropdown_search: ^5.0.6
+
+  # export PDF
+  pdf: ^3.10.8
+  printing: ^5.11.1
+
+  # export excel
+  excel: ^4.0.6
+  path_provider: ^2.1.2
+  share_plus: ^10.0.0
+
+  # menerjemahkan
+  flutter_localizations:
+    sdk: flutter
+
 
 dev_dependencies:
   flutter_test:

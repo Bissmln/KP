@@ -1,3 +1,4 @@
+// lib/transaksi.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Transaksi {
@@ -13,8 +14,12 @@ class Transaksi {
   final String? catatan;
   final String? petugas;  // Untuk keluar
   final String? tujuan;   // Untuk keluar
-  final String? penerima; // Untuk masuk 
+  final String? penerima; // Untuk masuk
   final String? pengirim; // Untuk masuk
+
+  // --- TAMBAHAN BARU UNTUK LAPORAN PENGHASILAN ---
+  final num totalModal;
+  final num totalLaba;
 
   Transaksi({
     required this.id,
@@ -29,6 +34,8 @@ class Transaksi {
     this.tujuan,
     this.penerima,
     this.pengirim,
+    this.totalModal = 0, // Default 0
+    this.totalLaba = 0,  // Default 0
   });
 
   factory Transaksi.fromFirestore(DocumentSnapshot doc) {
@@ -46,6 +53,9 @@ class Transaksi {
       tujuan: data['tujuan'],
       penerima: data['penerima'],
       pengirim: data['pengirim'],
+      // --- TAMBAHAN BARU ---
+      totalModal: data['total_modal'] ?? 0,
+      totalLaba: data['total_laba'] ?? 0,
     );
   }
 }

@@ -41,7 +41,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (kategori.isEmpty) {
         kategori = 'Lainnya';
       }
-      num stok = data['stok_awal'] ?? 0;
+      num stok = data['stok'] ?? 0;
       dataKategori[kategori] = (dataKategori[kategori] ?? 0) + stok.toDouble();
       if (!warnaKategori.containsKey(kategori)) {
         warnaKategori[kategori] =
